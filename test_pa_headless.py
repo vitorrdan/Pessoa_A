@@ -1,0 +1,165 @@
+# -*- coding: utf-8 -*-
+"""PESSOA A - Testes SEM torch e SEM Tkinter (io, aumento, balanceamento, metricas,
+estrategias de corte, coerencia calor-tumor, classificacao de pasta com predictor falso).
+Uso: python test_pa_headless.py"""
+import os
+import sys
+import tempfile
+
+import numpy as np
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from make_synthetic_data import make
+from pa_augment import augment_variants, augment_mask_like, balance_plan
+from pa_gradcam import heat_in_mask_metrics, _norm01, summarize_heat_metrics
+from pa_metrics import auc_roc, binary_metrics
+from pa_nii_io import DatasetIndex, load_case, orient_slice
+from pa_slices import predict_volume, representative_slice, max_area_slice, tumor_area_per_slice
+
+
+def ok(name):
+    print("  OK ", name)
+
+
+def main():
+    tmp = tempfile.mkdtemp()
+    make(tmp, n=18, size=64, nz=8)
+
+    # --- indexacao e leitura -------------------------------------------------
+    idx = DatasetIndex(tmp)
+    assert len(idx.cases) == 18 and len(idx.pids()) == 18, idx.summary()
+    assert idx.csv_info["label"] == "pcr" and idx.csv_info["split"] == "split"
+    assert set(idx.cases["P001"].phases) == {"pre", "early", "late"} and idx.cases["P001"].mask
+    assert idx.cases["P001"].label == 1 and idx.cases["P002"].label == 0
+    assert len(idx.pids("train")) == 11 and len(idx.pids("val")) == 4 and len(idx.pids("test")) == 3
+    ok("DatasetIndex: pacientes, fases, mascara, rotulo, splits")
+
+    lc = load_case(idx.cases["P001"])
+    assert lc.n_slices == 8 and lc.vols["early"].shape == (64, 64, 8)
+    assert 0 <= lc.vols["pre"].min() and lc.vols["pre"].max() <= 1
+    assert lc.mask.shape == lc.vols["pre"].shape and set(np.unique(lc.mask)) <= {0.0, 1.0}
+    assert lc.info["pre"].axcodes == "RAS"
+    ok("load_case: shape, normalizacao [0,1], mascara binaria, axcodes")
+
+    img, origin = orient_slice(np.arange(12).reshape(3, 4), "T_lower")
+    assert img.shape == (4, 3) and origin == "lower"
+    assert orient_slice(np.zeros((3, 4)), "T_lower", flip_lr=True)[0].shape == (4, 3)
+    ok("orient_slice")
+
+    # --- aumento ----------------------------------------------------------------
+    sl = lc.vols["early"][:, :, 4]
+    vs = augment_variants(sl)
+    assert len(vs) == 10 and all(v[1].shape == sl.shape for v in vs)
+    assert np.allclose(vs[2][1], sl)                          # 0 graus original = identidade
+    assert np.allclose(vs[7][1], sl[:, ::-1])                 # 0 graus espelhada
+    assert not np.allclose(vs[0][1], sl)                      # -20 graus muda a imagem
+    m2 = augment_mask_like(lc.mask[:, :, 4], 10, True)
+    assert set(np.unique(m2)) <= {0.0, 1.0}
+    ok("augment_variants: 10 variacoes, identidade e espelho corretos")
+
+    # --- balanceamento ------------------------------------------------------------
+    p = balance_plan({0: 120, 1: 40})
+    assert abs(p["ratio"] - 3.0) < 1e-9 and p["relevant"]
+    assert p["variants_per_class"] == {0: 10, 1: 30}
+    assert p["after_prop"][0] == p["after_prop"][1] == 1200
+    assert abs(p["pos_weight"] - 3.0) < 1e-9 and abs(p["class_weights"][1] - 2.0) < 1e-9
+    assert not balance_plan({0: 50, 1: 45})["relevant"]
+    ok("balance_plan")
+
+    # --- metricas -----------------------------------------------------------------
+    rng = np.random.default_rng(1)
+    y = rng.integers(0, 2, 200)
+    pr = np.clip(y * 0.3 + rng.normal(0.35, 0.25, 200), 0, 1)
+    m = binary_metrics(y, pr, 0.5)
+    from sklearn.metrics import roc_auc_score, precision_score, recall_score, f1_score, accuracy_score
+    yp = (pr >= 0.5).astype(int)
+    assert abs(m["auc"] - roc_auc_score(y, pr)) < 1e-9
+    assert abs(m["precisao"] - precision_score(y, yp)) < 1e-9
+    assert abs(m["sensibilidade"] - recall_score(y, yp)) < 1e-9
+    assert abs(m["f1"] - f1_score(y, yp)) < 1e-9 and abs(m["acuracia"] - accuracy_score(y, yp)) < 1e-9
+    assert abs(auc_roc([0, 1, 1, 0], [0.5, 0.5, 0.5, 0.5]) - 0.5) < 1e-9     # empates
+    ok("metricas e AUC conferem com sklearn")
+
+    # --- estrategias de corte -----------------------------------------------------
+    areas = tumor_area_per_slice(lc.mask, 8)
+    assert areas.shape == (8,) and max_area_slice(lc.mask, 8) == int(np.argmax(areas))
+    fake = lambda zs: np.array([0.1 + 0.1 * z for z in zs])       # prob cresce com z
+    calls = []
+    spy = lambda zs: (calls.append(len(zs)), fake(zs))[1]
+    r = predict_volume(spy, 8, lc.mask, "central")
+    assert r["slices"] == [4] and abs(r["prob"] - 0.5) < 1e-9 and calls == [1]
+    r = predict_volume(fake, 8, lc.mask, "max_area")
+    assert r["slices"] == [int(np.argmax(areas))]
+    r = predict_volume(fake, 8, lc.mask, "mean")
+    assert abs(r["prob"] - np.mean([0.1 + 0.1 * z for z in range(8)])) < 1e-9
+    r = predict_volume(fake, 8, lc.mask, "max")
+    assert abs(r["prob"] - 0.8) < 1e-9 and representative_slice(r, "max", 8) == 7
+    r = predict_volume(fake, 8, lc.mask, "tumor_wmean")
+    w = areas / areas.sum()
+    assert abs(r["prob"] - float((fake(range(8)) * w).sum())) < 1e-9
+    for bad in ("max_area", "tumor_wmean"):
+        try:
+            predict_volume(fake, 8, None, bad)
+            raise SystemExit("deveria exigir mascara: " + bad)
+        except ValueError:
+            pass
+    ok("estrategias: central, maior area, media, maximo, media ponderada (+erro sem mascara)")
+
+    # --- coerencia calor x tumor ----------------------------------------------------
+    mask = np.zeros((64, 64)); mask[20:30, 20:30] = 1
+    cam_in = np.zeros((64, 64)); cam_in[22:28, 22:28] = 1.0
+    cam_out = np.zeros((64, 64)); cam_out[45:55, 45:55] = 1.0
+    a, b = heat_in_mask_metrics(cam_in, mask), heat_in_mask_metrics(cam_out, mask)
+    assert abs(a["heat_fraction"] - 1.0) < 1e-9 and a["peak_in_mask"] == 1.0 and a["top_in_mask"] == 1.0
+    assert b["heat_fraction"] == 0.0 and b["peak_in_mask"] == 0.0
+    assert abs(a["enrichment"] - 1.0 / (100 / 4096)) < 1e-6
+    half = cam_in.copy(); half[45:55, 45:55] = 36 / 100          # metade do calor em cada regiao
+    assert abs(heat_in_mask_metrics(half, mask)["heat_fraction"] - 36 / 72) < 1e-9
+    assert np.isnan(heat_in_mask_metrics(cam_in, np.zeros((64, 64)))["heat_fraction"])
+    assert np.isnan(heat_in_mask_metrics(np.zeros((64, 64)), mask)["heat_fraction"])
+    s = summarize_heat_metrics([a, b, heat_in_mask_metrics(cam_in, np.zeros((64, 64)))])
+    assert abs(s["heat_fraction"] - 0.5) < 1e-9 and s["heat_fraction_n"] == 2
+    n01 = _norm01(np.stack([np.arange(4.0).reshape(2, 2), np.zeros((2, 2))]))
+    assert n01[0].max() == 1 and n01[0].min() == 0 and n01[1].max() == 0
+    ok("heat_in_mask_metrics / _norm01")
+
+    # --- classificar pasta (predictor falso, sem torch) ----------------------------------
+    import pa_models
+    import pa_folder_eval
+
+    def fake_make_predict_fn(spec, vols, batch_size=16):
+        # "rede" falsa: area realcada do corte -> prob. alta se tumor PEQUENO (pCR) no sintetico
+        def f(zs):
+            return np.array([1.0 - np.clip((vols["early"][:, :, z] > 0.5).mean() / 0.12, 0, 1)
+                             for z in zs])
+        return f
+    pa_models.make_predict_fn = fake_make_predict_fn
+    class Spec: threshold = 0.5; phases_used = ["pre", "early", "late"]
+    out = pa_folder_eval.classify_folder(Spec(), tmp, "max_area")
+    assert len(out["rows"]) == 18 and all(r["erro"] == "" for r in out["rows"])
+    mt = out["metrics"]
+    assert mt["n"] == 18 and mt["tp"] + mt["tn"] + mt["fp"] + mt["fn"] == 18
+    assert mt["auc"] > 0.9, mt                                  # sinal sintetico deve ser capturado
+    out_t = pa_folder_eval.classify_folder(Spec(), tmp, "mean", split="test")
+    assert len(out_t["rows"]) == 3
+    # pasta sem mascara + estrategia que exige mascara -> fallback p/ 'mean'
+    nm = tempfile.mkdtemp()
+    for f in os.listdir(tmp):
+        if "seg" not in f:
+            os.link(os.path.join(tmp, f), os.path.join(nm, f))
+    out_nm = pa_folder_eval.classify_folder(Spec(), nm, "max_area")
+    assert {r["strategy_used"] for r in out_nm["rows"]} == {"mean"} and out_nm["metrics"]
+    # pasta sem CSV: so previsoes, sem metricas
+    nc = tempfile.mkdtemp()
+    for f in os.listdir(tmp):
+        if f.endswith(".gz"):
+            os.link(os.path.join(tmp, f), os.path.join(nc, f))
+    out_nc = pa_folder_eval.classify_folder(Spec(), nc, "mean")
+    assert len(out_nc["rows"]) == 18 and out_nc["metrics"] is None
+    ok("classify_folder: metricas, split, fallback sem mascara, pasta sem CSV")
+
+    print("\nTODOS OS TESTES SEM TORCH PASSARAM")
+
+
+if __name__ == "__main__":
+    main()

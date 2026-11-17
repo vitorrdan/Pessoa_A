@@ -1,0 +1,8 @@
+"""
+Processamento e Analise de Imagens - Trabalho Pratico
+
+Integrantes:
+- Daniel Victor Rocha Costa | Matricula: 813213 | Ciencia da Computacao | Campus: Coracao Eucaristico
+- Gabriela [Sobrenome]      | Matricula: XXXXXXX | Ciencia da Computacao | Campus: Coracao Eucaristico
+- Suzane Lemos de Lima        | Matricula: 770855 | Ciencia da Computacao | Campus: Coracao Eucaristico
+"""

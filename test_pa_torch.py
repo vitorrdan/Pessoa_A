@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-"""PESSOA A - Testes que EXIGEM torch
+"""PESSOA A - Testes que EXIGEM torch (rodar na maquina do grupo; NAO foram
+executados no ambiente onde este codigo foi escrito, que nao tinha torch).
 Uso: python test_pa_torch.py"""
 import os
 import sys

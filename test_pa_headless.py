@@ -158,7 +158,92 @@ def main():
     assert len(out_nc["rows"]) == 18 and out_nc["metrics"] is None
     ok("classify_folder: metricas, split, fallback sem mascara, pasta sem CSV")
 
+    test_real_like()
+    test_meta_layout()
     print("\nTODOS OS TESTES SEM TORCH PASSARAM")
+
+
+def test_real_like():
+    """Regressao dos problemas apontados pela Pessoa C: eixo z, nomes _aqc_, CSV spy1/test."""
+    import nibabel as nib
+    from pa_nii_io import detect_z_axis, load_nii
+    import pa_config
+
+    # --- eixo z: o array do arquivo pode ter os cortes em qualquer eixo
+    base = np.random.default_rng(0).random((32, 32, 5)).astype(np.float32)
+    for za, arr in ((2, base), (1, np.transpose(base, (0, 2, 1))), (0, np.transpose(base, (2, 0, 1)))):
+        f = os.path.join(tempfile.mkdtemp(), "v.nii.gz")
+        nib.save(nib.Nifti1Image(arr, np.eye(4)), f)
+        v = load_nii(f)
+        assert v.shape == (32, 32, 5) and v.z_axis_original == za, (za, v.shape)
+        assert np.allclose(v.data, base)                     # mesmo conteudo, mesma ordem X,Y,Z
+    assert detect_z_axis((256, 49, 256)) == 1 and detect_z_axis((49, 256, 256)) == 0
+    assert detect_z_axis((256, 256, 49)) == 2
+    assert detect_z_axis((10, 20, 30)) == 0 and detect_z_axis((30, 20, 10)) == 2     # ambiguo -> menor eixo (= Pessoa C)
+    assert detect_z_axis((10, 20, 30), forced=2) == 2
+    ok("eixo z detectado (0, 1 ou 2) e movido para o fim; conteudo preservado")
+
+    # --- dataset 'real-like': z no meio, _aqc_, CSV com dataset/test/pre/post_*
+    for with_cols in (True, False):
+        tmp = tempfile.mkdtemp()
+        make(tmp, n=20, size=64, nz=8, layout="official", phase_cols=with_cols)
+        idx = DatasetIndex(tmp)
+        assert idx.csv_info["rows_total"] == 25 and idx.csv_info["rows_used"] == 20, idx.csv_info
+        assert len(idx.cases) == 20 and not any(p.startswith("DUKE") for p in idx.cases)
+        assert (idx.csv_info["phase_cols"] is not None) == with_cols
+        assert len(idx.pids()) == 20                                        # 3 fases de todos
+        # particao: 0=treino, 1=teste, 2=validacao (nao trocar 1 e 2)
+        assert (len(idx.pids("train")), len(idx.pids("test")), len(idx.pids("val"))) == (12, 4, 4)
+        assert idx.cases["ISPY1_1017"].split == "test" and idx.cases["ISPY1_1013"].split == "val"
+        # splits.csv conflitante NAO sobrescreve a particao do CSV oficial (regra da Pessoa C)
+        import pandas as pd
+        os.makedirs(os.path.join(tmp, "cache"), exist_ok=True)
+        pd.DataFrame({"pid": list(idx.cases), "pCR": 0, "split": "train"}).to_csv(
+            os.path.join(tmp, "cache", "splits.csv"), index=False)
+        idx2 = DatasetIndex(tmp)
+        assert idx2.csv_info["splits_csv"].endswith("splits.csv") and idx2.csv_info["splits_applied"] == 0
+        assert (len(idx2.pids("train")), len(idx2.pids("test")), len(idx2.pids("val"))) == (12, 4, 4)
+        lc = load_case(idx.cases["ISPY1_1000"])
+        assert lc.vols["early"].shape == (64, 64, 8) and lc.mask.shape == (64, 64, 8)
+        areas = lc.mask.sum(axis=(0, 1))
+        assert int(np.argmax(areas)) in (3, 4, 5), areas                   # pico no meio dos cortes
+        assert idx.cases["ISPY1_1000"].mask_range() is not None
+        zs = np.where(areas > 0)[0]
+        assert idx.cases["ISPY1_1000"].mask_range() == (int(zs.min()), int(zs.max()))
+    ok("dataset real-like: filtro spy1, test 0/1/2, colunas pre/post_*, _aqc_, eixo z, mask_start/end")
+
+
+def test_meta_layout():
+    """Estrutura vista nos arquivos da Pessoa B: dce/ e mask/, _spy1_vis1_dce_aqc_N, CSV de
+    metadados com dataset='duke', cache/splits.csv, cortes no PRIMEIRO eixo."""
+    import nibabel as nib
+    tmp = tempfile.mkdtemp()
+    make(tmp, n=20, size=64, nz=8, layout="meta")
+    raw = np.asarray(nib.load(os.path.join(tmp, "dce", "ISPY1_1000_spy1_vis1_dce_aqc_0.nii.gz")).dataobj)
+    assert raw.shape == (8, 64, 64)            # z no eixo 0: o fatiamento por shape[2] do data.py quebraria
+    assert raw.shape[2] // 2 != 4              # (indice 32 de um eixo de 64, nao o corte central)
+
+    idx = DatasetIndex(tmp)
+    assert idx.csv_info["path"].endswith("BreastDCEDL_spy1_metadata.csv"), idx.csv_info["path"]
+    assert idx.csv_info["rows_used"] == idx.csv_info["rows_total"] == 22     # dataset='duke': nao filtra
+    assert idx.csv_info["splits_csv"].endswith(os.path.join("cache", "splits.csv"))
+    assert len(idx.cases) == 20 and len(idx.pids()) == 20                   # as 2 linhas sem pCR nao viram caso
+    assert all(c.mask and os.sep + "mask" + os.sep in c.mask for c in idx.cases.values())
+    assert (len(idx.pids("train")), len(idx.pids("val")), len(idx.pids("test"))) == (12, 4, 4)
+    assert idx.class_counts() == {0: 13, 1: 7}
+    for pid in ("ISPY1_1000", "ISPY1_1013", "ISPY1_1017"):
+        lc = load_case(idx.cases[pid])
+        assert lc.vols["pre"].shape == (64, 64, 8) and lc.info["pre"].z_axis_original == 0
+        areas = lc.mask.sum(axis=(0, 1))
+        # confere o eixo z com a coluna mask_max_plane do CSV (mesma ideia de verificacao p/ o dado real)
+        assert int(np.argmax(areas)) == int(idx.cases[pid].clinical["mask_max_plane"]), areas
+    from pa_models import _filter_kwargs
+    ok_builder = lambda dropout=0.5, hidden=64: None
+    cfg = {"arch": "cnn", "dropout": 0.3, "hidden": 32, "threshold": 0.4, "norm": "percentile"}
+    assert _filter_kwargs(ok_builder, cfg) == {"dropout": 0.3, "hidden": 32}
+    assert _filter_kwargs(lambda **kw: None, cfg) == cfg
+    ok("layout da Pessoa B: dce/ + mask/, _aqc_, CSV de metadados, splits.csv, z no eixo 0, mask_max_plane")
+    ok("_filter_kwargs: builder so recebe os argumentos que aceita")
 
 
 if __name__ == "__main__":

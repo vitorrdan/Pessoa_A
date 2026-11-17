@@ -14,6 +14,20 @@ from tkinter import filedialog, messagebox, ttk
 from pa_gui_common import make_canvas
 
 COLS = ["name", "sensibilidade", "especificidade", "precisao", "acuracia", "f1", "auc", "train_time_s"]
+# Nomes alternativos aceitos nos JSONs (ingles; prefixos m05_ = limiar 0,5 e mt_ = limiar ajustado,
+# usados pela Pessoa C). Ordem de busca: nome puro, m05_, mt_.
+ALIASES = {"sensibilidade": ["sensitivity", "sens", "recall"],
+           "especificidade": ["specificity", "spec"],
+           "precisao": ["precision"], "acuracia": ["accuracy", "acc"],
+           "f1": ["f1_score"], "auc": ["roc_auc", "auc_roc"]}
+
+
+def get_metric(m: dict, key: str):
+    for prefix in ("", "m05_", "mt_"):
+        for name in [key] + ALIASES.get(key, []):
+            if prefix + name in m:
+                return m[prefix + name]
+    return None
 
 
 class ResultsTab(ttk.Frame):
@@ -51,9 +65,9 @@ class ResultsTab(ttk.Frame):
     def redraw(self):
         self.tree.delete(*self.tree.get_children())
         for r in self.runs:
-            m = r.get("metrics", {})
-            vals = [r.get("name", "?")] + [self._fmt(m.get(c)) for c in COLS[1:7]] + \
-                   [self._fmt(r.get("train_time_s"), 0)]
+            m = r.get("metrics") or r              # metricas aninhadas ou no topo do JSON
+            vals = [r.get("name", "?")] + [self._fmt(get_metric(m, c)) for c in COLS[1:7]] + \
+                   [self._fmt(r.get("train_time_s", r.get("train_time")), 0)]
             self.tree.insert("", "end", values=vals)
         self.fig.clear()
         ax = self.fig.subplots()
@@ -82,6 +96,6 @@ class ResultsTab(ttk.Frame):
         if not p:
             return
         import pandas as pd
-        rows = [{"name": r.get("name"), **r.get("metrics", {}), "train_time_s": r.get("train_time_s")}
-                for r in self.runs]
+        rows = [{"name": r.get("name"), **{c: get_metric(r.get("metrics") or r, c) for c in COLS[1:7]},
+                 "train_time_s": r.get("train_time_s", r.get("train_time"))} for r in self.runs]
         pd.DataFrame(rows).to_csv(p, index=False)

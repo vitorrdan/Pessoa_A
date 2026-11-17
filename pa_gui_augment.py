@@ -24,7 +24,7 @@ class AugmentTab(ttk.Frame):
         nb.pack(fill="both", expand=True)
         self.f_var = ttk.Frame(nb)
         self.f_bal = ttk.Frame(nb)
-        nb.add(self.f_var, text="Variaçoes de uma imagem")
+        nb.add(self.f_var, text="Variações de uma imagem")
         nb.add(self.f_bal, text="Balanceamento de classes")
 
         # --- variacoes
@@ -38,16 +38,16 @@ class AugmentTab(ttk.Frame):
         self.z_var = tk.IntVar(value=0)
         self.z_spin = ttk.Spinbox(top, from_=0, to=0, textvariable=self.z_var, width=5)
         self.z_spin.pack(side="left", padx=4)
-        ttk.Button(top, text="Usar corte de maior area tumoral", command=self._use_max_area
+        ttk.Button(top, text="Usar corte de maior área tumoral", command=self._use_max_area
                    ).pack(side="left", padx=4)
-        ttk.Button(top, text="Gerar variaçoes", command=self.show_variants).pack(side="left", padx=4)
+        ttk.Button(top, text="Gerar variações", command=self.show_variants).pack(side="left", padx=4)
         self.fig_v, self.canvas_v = make_canvas(self.f_var, (11, 4.8))
 
         # --- balanceamento
         top2 = ttk.Frame(self.f_bal)
         top2.pack(side="top", fill="x", padx=6, pady=4)
         ttk.Label(top2, text="Dados:").pack(side="left")
-        self.bal_split = tk.StringVar(value="treino+validacao")
+        self.bal_split = tk.StringVar(value="treino+validação")
         ttk.Combobox(top2, textvariable=self.bal_split, width=18, state="readonly",
                      values=["treino+validação", "treino", "validação", "todos"]).pack(side="left", padx=4)
         ttk.Button(top2, text="Calcular do dataset", command=self.from_dataset).pack(side="left", padx=4)

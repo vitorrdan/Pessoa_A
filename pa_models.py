@@ -16,7 +16,11 @@ CONTRATO DO CHECKPOINT (torch.save(dict, caminho)):
     "imagenet_norm": False/True  (True p/ ResNet50 pre-treinada),
     "threshold":   0.5,
     "norm":        "percentile" (padrao deste modulo),
+    + hiperparametros do builder (ex.: dropout, hidden/head_hidden): sao repassados ao
+      builder SOMENTE se ele os aceitar (a interface filtra pela assinatura).
   }
+Normalizacao ImageNet: se estiver DENTRO do modelo (caso da Pessoa C), salvar
+imagenet_norm=False - a interface entrega entradas em [0,1] (percentil 1-99).
 Tambem e aceito um modelo inteiro salvo com torch.save(model) (arch=None).
 
 COMO REGISTRAR A ARQUITETURA (no arquivo de B/C, antes de carregar):
@@ -29,6 +33,8 @@ ALVO DO GRAD-CAM:
   - Senao, se tiver `layer4` (ResNet)  -> model.layer4
   - Senao, a ULTIMA nn.Conv2d encontrada.
 """
+import inspect
+import warnings
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional
 
@@ -57,6 +63,7 @@ class ModelSpec:
     threshold: float = DEFAULT_THRESHOLD
     target_layers: List = field(default_factory=list)
     device: str = "cpu"
+    norm: str = "percentile"            # normalizacao de intensidade usada no treino
 
     @property
     def phases_used(self) -> List[str]:
@@ -82,6 +89,18 @@ def find_target_layers(model) -> List:
     return [last]
 
 
+def _filter_kwargs(fn, cfg: dict) -> dict:
+    """Repassa ao builder so os argumentos que ele aceita (a menos que tenha **kwargs).
+    Evita TypeError por chaves extras do checkpoint (arch, threshold, norm, ...)."""
+    try:
+        sig = inspect.signature(fn)
+    except (TypeError, ValueError):
+        return dict(cfg)
+    if any(p.kind == p.VAR_KEYWORD for p in sig.parameters.values()):
+        return dict(cfg)
+    return {k: v for k, v in cfg.items() if k in sig.parameters}
+
+
 def get_device(prefer_gpu=True) -> str:
     import torch
     return "cuda" if prefer_gpu and torch.cuda.is_available() else "cpu"
@@ -104,11 +123,16 @@ def load_model_spec(path: str, name: Optional[str] = None, device: Optional[str]
                            f"pa_models.register_arch('{arch}', builder) antes de carregar. "
                            f"Registradas: {list(ARCH_BUILDERS)}")
         cfg = {k: v for k, v in ckpt.items() if k != "state_dict"}
-        model = ARCH_BUILDERS[arch](**cfg)
+        builder = ARCH_BUILDERS[arch]
+        model = builder(**_filter_kwargs(builder, cfg))
         model.load_state_dict(ckpt["state_dict"])
     else:
         model, cfg = ckpt, {}              # modelo inteiro serializado
     model.to(device).eval()
+    norm = str(cfg.get("norm", "percentile"))
+    if "percentil" not in norm.lower():
+        warnings.warn(f"Checkpoint treinado com normalizacao '{norm}', mas a interface aplica "
+                      f"percentil 1-99: as previsoes podem divergir do treino.")
     return ModelSpec(
         name=name or cfg.get("arch") or type(model).__name__,
         model=model,
@@ -120,6 +144,7 @@ def load_model_spec(path: str, name: Optional[str] = None, device: Optional[str]
         threshold=float(cfg.get("threshold", DEFAULT_THRESHOLD)),
         target_layers=find_target_layers(model),
         device=device,
+        norm=norm,
     )
 
 

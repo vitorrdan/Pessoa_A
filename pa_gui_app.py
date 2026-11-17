@@ -55,24 +55,33 @@ class App:
                                             filetypes=[("PyTorch", "*.pt *.pth *.ckpt"), ("Todos", "*.*")])
         if not paths:
             return
+        import pa_models
+        import_errors = self._import_team_architectures()
         try:
-            import pa_models
-            self._import_team_architectures()
             for p in paths:
                 self._register(pa_models.load_model_spec(p))
         except Exception as e:
-            messagebox.showerror("Carregar pesos", str(e))
+            msg = str(e)
+            if import_errors:                       # causa mais comum: pc_models nao importou
+                msg += "\n\nFalhas ao importar os modulos da equipe:\n" + "\n".join(import_errors)
+            messagebox.showerror("Carregar pesos", msg)
 
     @staticmethod
     def _import_team_architectures():
-        """INTEGRACAO: aqui o arquivo unico final ja tem as classes de B e C e
-        chama pa_models.register_arch(...) para 'cnn', 'resnet50', 'three_branch'.
-        Enquanto os modulos estao separados, importamos o modulo de B/C se existir."""
-        for mod in ("pb_models", "pc_models"):
+        """INTEGRACAO: importar pc_models registra 'cnn', 'resnet50' e o modelo de ramos via
+        pa_models.register_arch. No arquivo unico final isso ja estara no mesmo arquivo.
+        Retorna a lista de falhas (modulo existe mas nao importou) para mostrar ao usuario;
+        modulo inexistente e ignorado."""
+        errors = []
+        for mod in ("pc_models", "pb_models"):
             try:
                 __import__(mod)
-            except ImportError:
-                pass
+            except ModuleNotFoundError as e:
+                if e.name != mod:                   # faltou uma dependencia DENTRO do modulo
+                    errors.append(f"{mod}: falta a biblioteca '{e.name}'")
+            except Exception as e:
+                errors.append(f"{mod}: {type(e).__name__}: {e}")
+        return errors
 
     def load_demo(self):
         import pa_models

@@ -1,7 +1,3 @@
-# -*- coding: utf-8 -*-
-"""PESSOA A - Aba 'Classificar + Grad-CAM' (item e): classifica o paciente
-carregado, mostra probabilidade, mapa de calor, sobreposicao com o contorno do
-tumor e a fracao do calor dentro da mascara. Gera figuras de acertos/erros."""
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
@@ -68,7 +64,7 @@ class GradcamTab(ttk.Frame):
             n = len(self.state.models[name].target_layers)
             self.layer_cb["values"] = ["média"] + [f"camada {i}" for i in range(n)] if n > 1 else ["média"]
 
-    # ---- classificar -------------------------------------------------------------
+
     def run(self):
         if not self.state.need_case():
             return
@@ -111,7 +107,7 @@ class GradcamTab(ttk.Frame):
             else ex["per_layer"][int(sel.split()[1])][0]
         ph = spec.phases_used[-1]
         base = lc.vols[ph][:, :, z]
-        cam = resize_map(cam, base.shape)          # CAM sai no tamanho da entrada da rede
+        cam = resize_map(cam, base.shape)
         mk = lc.mask[:, :, z] if lc.mask is not None else None
         o, fl = DEFAULT_ORIENTATION, DEFAULT_FLIP_LR
         origin = "lower" if o == "T_lower" else "upper"
@@ -148,7 +144,7 @@ class GradcamTab(ttk.Frame):
                 txt += "\n(sem tumor neste corte ou mapa nulo: métrica de coerência indisponível)"
         self.result_txt.set(txt)
 
-    # ---- relatorio -------------------------------------------------------------------
+
     def report(self):
         idx = self.state.index
         name = self.model_var.get()
@@ -161,7 +157,7 @@ class GradcamTab(ttk.Frame):
         spec, strat = self.state.models[name], self.strat_var.get()
         pids = [p for p in idx.pids("test") if idx.cases[p].label is not None] or \
                [p for p in idx.pids() if idx.cases[p].label is not None]
-        pids = pids[:60]                           # limite p/ nao travar a interface
+        pids = pids[:60]
         self.result_txt.set(f"Gerando figuras para {len(pids)} pacientes…")
 
         def work():

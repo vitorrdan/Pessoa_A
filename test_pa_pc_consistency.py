@@ -1,10 +1,3 @@
-# -*- coding: utf-8 -*-
-"""PESSOA A - Confere se o treino da Pessoa C e a interface (A) leem os dados IGUAL.
-Rodar na pasta onde estao pa_*.py E pc_*.py:   python test_pa_pc_consistency.py
-
-ATENCAO: escrito SEM ter visto pc_data.py - assume as funcoes citadas no README_C:
-  pc_data.normalize_percentile(vol) e pc_data.plane_axis_last(vol).
-Se a assinatura for outra, o teste avisa 'PULADO' e diz o que ajustar (nao falha em silencio)."""
 import os
 import sys
 import tempfile
@@ -33,7 +26,7 @@ def main():
     rng = np.random.default_rng(0)
     problemas = 0
 
-    # 1) eixo dos cortes: mesmo resultado que load_nii para volumes (49,256,256)-like
+
     vol = rng.random((9, 40, 40)).astype(np.float32) * 300
     f = os.path.join(tempfile.mkdtemp(), "v.nii.gz")
     nib.save(nib.Nifti1Image(vol, np.eye(4)), f)
@@ -50,7 +43,7 @@ def main():
     else:
         print("PULADO eixo: pc_data nao tem plane_axis_last")
 
-    # 2) normalizacao de intensidade (por volume/fase), com fundo zero como nos dados reais
+
     v = rng.gamma(2.0, 40.0, (40, 40, 9)).astype(np.float32)
     v[:6] = 0
     mine = normalize_volume(v)

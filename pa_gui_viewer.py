@@ -1,7 +1,3 @@
-# -*- coding: utf-8 -*-
-"""PESSOA A - Aba 'Visualizar' (item a): imagem .nii no plano xy + mascara ao lado,
-navegacao em z, seletor de paciente e fase, controles de orientacao p/ validar
-contra o MRIcro/ITK-SNAP."""
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
@@ -21,7 +17,7 @@ class ViewerTab(ttk.Frame):
         self._build()
         state.listeners.append(self._on_state)
 
-    # ---- layout ------------------------------------------------------------
+
     def _build(self):
         top = ttk.Frame(self)
         top.pack(side="top", fill="x", padx=6, pady=4)
@@ -75,15 +71,15 @@ class ViewerTab(ttk.Frame):
         frame.pack(side="top", fill="both", expand=True)
         self.fig, self.canvas = make_canvas(frame, (9, 4.2))
         self.ax_img, self.ax_mask = self.fig.subplots(1, 2)
-        self.canvas.get_tk_widget().bind("<MouseWheel>", self._wheel)       # Windows/macOS
-        self.canvas.get_tk_widget().bind("<Button-4>", lambda e: self._step(1))   # Linux
+        self.canvas.get_tk_widget().bind("<MouseWheel>", self._wheel)
+        self.canvas.get_tk_widget().bind("<Button-4>", lambda e: self._step(1))
         self.canvas.get_tk_widget().bind("<Button-5>", lambda e: self._step(-1))
         w = self.canvas.get_tk_widget()
-        w.bind("<Enter>", lambda e: w.focus_set())         # setas so atuam com o mouse sobre a imagem
+        w.bind("<Enter>", lambda e: w.focus_set())
         w.bind("<Left>", lambda e: self._step(-1))
         w.bind("<Right>", lambda e: self._step(1))
 
-    # ---- carregamento -----------------------------------------------------
+
     def open_dataset(self):
         folder = filedialog.askdirectory(title="Pasta raiz do dataset (com .nii e o CSV)")
         if not folder:
@@ -172,7 +168,7 @@ class ViewerTab(ttk.Frame):
     def _on_state(self, what):
         pass
 
-    # ---- exibicao -----------------------------------------------------------
+
     def _on_slider(self, val):
         self.z = int(float(val))
         self.refresh()

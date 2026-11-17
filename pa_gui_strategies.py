@@ -1,6 +1,3 @@
-# -*- coding: utf-8 -*-
-"""PESSOA A - Aba 'Estrategias de corte' (item c): compara central, maior area,
-media, maximo e media ponderada pela area tumoral no paciente carregado."""
 import tkinter as tk
 from tkinter import messagebox, ttk
 
@@ -58,7 +55,7 @@ class StrategiesTab(ttk.Frame):
 
         def work():
             pf = make_predict_fn(spec, lc.vols)
-            per_slice = np.asarray(pf(list(range(lc.n_slices))))      # 1 inferencia por corte, reaproveitada
+            per_slice = np.asarray(pf(list(range(lc.n_slices))))
             lookup = lambda zs: per_slice[list(zs)]
             return {s: predict_volume(lookup, lc.n_slices, lc.mask, s) for s in strategies}, per_slice
 

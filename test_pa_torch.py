@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+
 """PESSOA A - Testes que EXIGEM torch (rodar na maquina do grupo; NAO foram
 executados no ambiente onde este codigo foi escrito, que nao tinha torch).
 Uso: python test_pa_torch.py"""
@@ -32,12 +32,12 @@ class RegionNet(nn.Module):
 
 
 def main():
-    # 1) Grad-CAM aponta para a regiao que a rede usa
+
     net = RegionNet().eval()
     spec = ModelSpec("region", net, "fusion", 3, 64, target_layers=find_target_layers(net), device="cpu")
     assert spec.target_layers == [net.conv]
-    # Grad-CAM localiza pelas ATIVACOES (os gradientes sao pooled globalmente): so ha
-    # sinal de entrada na regiao que a rede usa, então o calor deve cair nela.
+
+
     x = torch.zeros(2, 3, 64, 64)
     x[:, :, 8:24, 8:24] = torch.rand(2, 3, 16, 16) + 0.5
     out = GradCAM(spec)(x, target_class=1)
@@ -46,13 +46,13 @@ def main():
     region = np.zeros((64, 64)); region[8:24, 8:24] = 1
     for c in cams:
         m = heat_in_mask_metrics(c, region)
-        assert m["heat_fraction"] > 0.8, m                 # calor concentrado na regiao (+halo de 1 px da conv 3x3)
-    assert len(net.conv._forward_hooks) == 0               # hooks removidos
-    # classe 'sem pCR' inverte o sinal -> ReLU zera o mapa (nada empurra p/ a classe 0)
+        assert m["heat_fraction"] > 0.8, m
+    assert len(net.conv._forward_hooks) == 0
+
     assert GradCAM(spec)(x, target_class=0)["cams"].max() == 0
     print("  OK  Grad-CAM: calor na regiao correta, hooks removidos, classe oposta")
 
-    # 2) ResNet50 (layer4) e saida de 1 logit
+
     import torchvision
     r = torchvision.models.resnet50(weights=None)
     r.fc = nn.Linear(2048, 1)
@@ -62,7 +62,7 @@ def main():
     assert o["cams"].shape == (1, 128, 128) and 0 <= o["prob"][0] <= 1
     print("  OK  ResNet50: layer4 detectada, CAM 128x128")
 
-    # 3) Duas camadas alvo (3 ramos): media dos CAMs
+
     class TwoBranch(nn.Module):
         def __init__(self):
             super().__init__()
@@ -78,7 +78,7 @@ def main():
     assert len(o["per_layer"]) == 2 and o["cams"].shape == (2, 32, 32)
     print("  OK  Modelo de 2 ramos: gradcam_layers usado, CAM medio")
 
-    # 4) Pipeline completo com dataset sintetico + modelos demo (fusao e fase unica)
+
     tmp = tempfile.mkdtemp()
     make(tmp, n=10, size=64, nz=6)
     idx = DatasetIndex(tmp)
@@ -97,7 +97,7 @@ def main():
     assert os.path.exists(csv) and any(f.endswith(".png") for f in os.listdir(out))
     print("  OK  build_input/predict/relatorio com modelo demo")
 
-    # 5) 1 canal replicado p/ 3 (ResNet com fase unica) e normalizacao ImageNet
+
     sp = make_demo_spec("single:early"); sp.input_size = 64; sp.in_channels = 3; sp.imagenet_norm = True
     xin = build_input(sp, lc.vols, [0])
     assert xin.shape == (1, 3, 64, 64)

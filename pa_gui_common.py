@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-"""PESSOA A - Estado compartilhado da GUI e utilitarios (thread de trabalho)."""
 import queue
 import threading
 import tkinter as tk
@@ -9,20 +7,19 @@ from pa_config import PHASES, PHASE_LABELS
 
 
 class AppState:
-    """Estado compartilhado entre as abas."""
 
     def __init__(self, root):
         self.root = root
-        self.index = None            # DatasetIndex
-        self.case = None             # LoadedCase atual (carregado na aba Visualizar)
-        self.models = {}             # nome -> ModelSpec
-        self.listeners = []          # callbacks chamados quando index/case/modelos mudam
+        self.index = None
+        self.case = None
+        self.models = {}
+        self.listeners = []
 
     def notify(self, what: str):
         for cb in self.listeners:
             try:
                 cb(what)
-            except Exception as e:   # uma aba com erro nao derruba as outras
+            except Exception as e:
                 print(f"[aviso] listener falhou ({what}): {e}")
 
     def need_case(self) -> bool:
@@ -33,7 +30,6 @@ class AppState:
 
 
 def run_async(root, work, on_done, on_error=None, poll_ms=100):
-    """Executa `work()` em thread e chama on_done(resultado) na thread da GUI."""
     q = queue.Queue()
 
     def target():
@@ -71,7 +67,6 @@ def phase_from_choice(txt: str) -> str:
 
 
 def make_canvas(parent, figsize=(8, 4), toolbar=True):
-    """Figura matplotlib embutida no Tk (sem pyplot -> sem conflito de backend)."""
     from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
     from matplotlib.figure import Figure
     fig = Figure(figsize=figsize, dpi=100)

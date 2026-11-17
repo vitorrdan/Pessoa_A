@@ -1,6 +1,3 @@
-# -*- coding: utf-8 -*-
-"""PESSOA A - Aba 'Classificar pasta nova': aplica um modelo ja treinado a uma pasta
-(conjunto-teste surpresa) e mostra as metricas, sem retreinar."""
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
@@ -66,7 +63,7 @@ class FolderTab(ttk.Frame):
             messagebox.showerror("Limiar", "Limiar inválido.")
             return
 
-        self._progress = (0, 1, "")                # escrito pela thread, lido pela GUI (sem tocar no Tk)
+        self._progress = (0, 1, "")
         self._running = True
         self._poll_progress()
 

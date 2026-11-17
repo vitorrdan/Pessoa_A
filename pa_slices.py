@@ -1,18 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-PESSOA A - Estrategias para combinar os cortes de um volume (item c).
-
-Independente de torch: recebe `predict_fn(zs) -> probs` (ver pa_models.make_predict_fn).
-
-Estrategias:
-  central     : corte central (Z//2)
-  max_area    : corte com maior area tumoral (exige mascara)
-  mean        : media das probabilidades de TODOS os cortes
-  max         : maximo das probabilidades de TODOS os cortes
-  tumor_wmean : media ponderada pela area tumoral de cada corte (agregacao "outra");
-                cortes sem tumor tem peso 0. Justificativa: cortes sem tumor nao
-                carregam informacao sobre a resposta ao tratamento.
-"""
 from typing import Callable, Dict, Optional
 
 import numpy as np
@@ -43,8 +28,6 @@ def max_area_slice(mask: Optional[np.ndarray], n_slices: int) -> int:
 
 def predict_volume(predict_fn: Callable, n_slices: int, mask: Optional[np.ndarray],
                    strategy: str) -> Dict:
-    """Retorna {'prob', 'slices' (usados), 'per_slice' (todos), 'areas', 'weights'}.
-    Para estrategias de 1 corte so esse corte e inferido (rapido)."""
     areas = tumor_area_per_slice(mask, n_slices)
     all_z = list(range(n_slices))
 
@@ -71,7 +54,6 @@ def predict_volume(predict_fn: Callable, n_slices: int, mask: Optional[np.ndarra
 
 
 def representative_slice(result: Dict, strategy: str, n_slices: int) -> int:
-    """Corte a mostrar/explicar (Grad-CAM) para o resultado de uma estrategia."""
     if strategy in ("central", "max_area"):
         return result["slices"][0]
     per = result["per_slice"]

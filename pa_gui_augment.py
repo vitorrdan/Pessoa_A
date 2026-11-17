@@ -1,6 +1,3 @@
-# -*- coding: utf-8 -*-
-"""PESSOA A - Aba 'Aumento de dados' (item b): original + 10 variacoes e
-grafico de balanceamento de classes (antes/depois)."""
 import tkinter as tk
 from tkinter import messagebox, ttk
 
@@ -27,7 +24,7 @@ class AugmentTab(ttk.Frame):
         nb.add(self.f_var, text="Variações de uma imagem")
         nb.add(self.f_bal, text="Balanceamento de classes")
 
-        # --- variacoes
+
         top = ttk.Frame(self.f_var)
         top.pack(side="top", fill="x", padx=6, pady=4)
         ttk.Label(top, text="Fase:").pack(side="left")
@@ -43,7 +40,7 @@ class AugmentTab(ttk.Frame):
         ttk.Button(top, text="Gerar variações", command=self.show_variants).pack(side="left", padx=4)
         self.fig_v, self.canvas_v = make_canvas(self.f_var, (11, 4.8))
 
-        # --- balanceamento
+
         top2 = ttk.Frame(self.f_bal)
         top2.pack(side="top", fill="x", padx=6, pady=4)
         ttk.Label(top2, text="Dados:").pack(side="left")
@@ -63,7 +60,7 @@ class AugmentTab(ttk.Frame):
                                                                               padx=8, pady=4)
         self.fig_b, self.canvas_b = make_canvas(self.f_bal, (9, 4))
 
-    # ---- variacoes ------------------------------------------------------------
+
     def _use_max_area(self):
         lc = self.state.case
         if not self.state.need_case():
@@ -104,7 +101,7 @@ class AugmentTab(ttk.Frame):
         self.fig_v.tight_layout()
         self.canvas_v.draw_idle()
 
-    # ---- balanceamento ---------------------------------------------------------
+
     def from_dataset(self):
         idx = self.state.index
         if idx is None:

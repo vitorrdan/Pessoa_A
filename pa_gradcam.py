@@ -1,19 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-PESSOA A - Grad-CAM (item e) e medidas de coerencia com o tumor.
-
-Grad-CAM implementado do zero com hooks do PyTorch (nao usa biblioteca pronta):
-  1. forward hook na camada alvo guarda as ativacoes A (N,K,h,w);
-  2. score = logit da classe pCR (ou -logit p/ explicar "sem pCR");
-  3. grad = d score / d A  (torch.autograd.grad);
-  4. pesos  alpha_k = media espacial do grad;
-  5. CAM = ReLU( sum_k alpha_k * A_k ), reamostrado p/ o tamanho da entrada e
-     normalizado em [0,1].
-Varias camadas alvo (modelo de 3 ramos): o CAM final e a media dos CAMs.
-
-Funciona sem alterar a rede: CNN propria (ultima Conv2d), ResNet50 (layer4) e
-3 ramos (model.gradcam_layers). A camada pode ser um bloco (Sequential/Bottleneck).
-"""
 import os
 from typing import Dict, List, Optional
 
@@ -30,7 +14,7 @@ class GradCAM:
         self._acts: List = []
         self._hooks = []
 
-    # -- hooks ---------------------------------------------------------------
+
     def _attach(self):
         self._acts = [None] * len(self.layers)
         for i, layer in enumerate(self.layers):
@@ -44,7 +28,7 @@ class GradCAM:
         self._hooks = []
         self._acts = []
 
-    # -- calculo -------------------------------------------------------------
+
     def __call__(self, x, target_class: int = 1) -> Dict:
         """x: tensor (N,C,H,W). Retorna {'cams': (N,H,W) em [0,1], 'prob': (N,),
         'per_layer': lista de (N,H,W)}."""
@@ -60,7 +44,7 @@ class GradCAM:
                 kind = self.spec.output_kind
                 if kind == "logit2":
                     score = flat[:, target_class]
-                else:                                   # 1 saida (logit ou prob)
+                else:
                     score = flat[:, 0] if target_class == 1 else -flat[:, 0]
                 acts = list(self._acts)
                 grads = torch.autograd.grad(score.sum(), acts, retain_graph=False)
@@ -100,9 +84,9 @@ def resize_map(cam: np.ndarray, shape) -> np.ndarray:
     return ndimage.zoom(cam, (shape[0] / cam.shape[0], shape[1] / cam.shape[1]), order=1)
 
 
-# --------------------------------------------------------------------------
-# Coerencia com o tumor (dias 11-12)
-# --------------------------------------------------------------------------
+
+
+
 def heat_in_mask_metrics(cam: np.ndarray, mask: np.ndarray, top_frac: float = 0.10) -> Dict:
     """cam, mask: (H,W). Retorna:
       heat_fraction : sum(cam dentro da mascara) / sum(cam)   (o pedido no plano)
@@ -122,8 +106,8 @@ def heat_in_mask_metrics(cam: np.ndarray, mask: np.ndarray, top_frac: float = 0.
         return {"heat_fraction": nan, "area_fraction": float(area), "enrichment": nan,
                 "top_in_mask": nan, "peak_in_mask": nan}
     hf = float(cam[m].sum() / total)
-    # pixels "mais quentes": top_frac da imagem, mas nunca pixels com calor 0
-    # (apos o ReLU o mapa e esparso; escolher zeros seria arbitrario).
+
+
     k = max(1, min(int(round(top_frac * cam.size)), int((cam > 0).sum())))
     idx = np.argpartition(cam.ravel(), -k)[-k:]
     top_in = float(m.ravel()[idx].mean())
@@ -143,9 +127,9 @@ def summarize_heat_metrics(rows: List[Dict]) -> Dict:
     return out
 
 
-# --------------------------------------------------------------------------
-# Figuras de acertos/erros para o relatorio
-# --------------------------------------------------------------------------
+
+
+
 def overlay_figure(base, cam, mask, title="", orient=("T_lower", False), alpha=0.45, ax=None):
     """Desenha corte + calor + contorno da mascara. Retorna o eixo."""
     import matplotlib.pyplot as plt
@@ -198,7 +182,7 @@ def generate_report_figures(spec: ModelSpec, cases, out_dir: str, strategy: str 
         groups[g].append((abs(res["prob"] - thr), lc, z, cam, mk, res["prob"]))
 
     for g, items in groups.items():
-        items.sort(key=lambda t: -t[0])                 # mais confiantes primeiro
+        items.sort(key=lambda t: -t[0])
         items = items[:per_group]
         if not items:
             continue

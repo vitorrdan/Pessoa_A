@@ -1,38 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-PESSOA A - Contrato entre a interface e os modelos (Pessoas B e C).
-
-A interface NAO conhece a arquitetura: ela recebe um `ModelSpec`.
-Para plugar um modelo basta salvar o checkpoint no formato abaixo.
-
-CONTRATO DO CHECKPOINT (torch.save(dict, caminho)):
-  {
-    "arch":        "cnn" | "resnet50" | "three_branch" | outro nome registrado,
-    "state_dict":  model.state_dict(),
-    "mode":        "fusion"  (3 fases)  |  "single:pre" | "single:early" | "single:late",
-    "in_channels": 3 (fusao, ou ResNet50 com fase unica replicada) ou 1,
-    "input_size":  256,
-    "output_kind": "logit" (1 saida, sigmoid fora) | "prob" | "logit2" (2 saidas, softmax),
-    "imagenet_norm": False/True  (True p/ ResNet50 pre-treinada),
-    "threshold":   0.5,
-    "norm":        "percentile" (padrao deste modulo),
-    + hiperparametros do builder (ex.: dropout, hidden/head_hidden): sao repassados ao
-      builder SOMENTE se ele os aceitar (a interface filtra pela assinatura).
-  }
-Normalizacao ImageNet: se estiver DENTRO do modelo (caso da Pessoa C), salvar
-imagenet_norm=False - a interface entrega entradas em [0,1] (percentil 1-99).
-Tambem e aceito um modelo inteiro salvo com torch.save(model) (arch=None).
-
-COMO REGISTRAR A ARQUITETURA (no arquivo de B/C, antes de carregar):
-    from pa_models import register_arch
-    register_arch("cnn", lambda **kw: MinhaCNN())
-
-ALVO DO GRAD-CAM:
-  - O modelo pode expor  `model.gradcam_layers`  (lista de nn.Module) -> usada direto
-    (p/ 3 ramos: a ultima conv de cada ramo, ou a camada de fusao).
-  - Senao, se tiver `layer4` (ResNet)  -> model.layer4
-  - Senao, a ULTIMA nn.Conv2d encontrada.
-"""
 import inspect
 import warnings
 from dataclasses import dataclass, field
@@ -54,8 +19,8 @@ def register_arch(name: str, builder: Callable):
 @dataclass
 class ModelSpec:
     name: str
-    model: object                       # torch.nn.Module
-    mode: str = "fusion"                # "fusion" ou "single:<fase>"
+    model: object
+    mode: str = "fusion"
     in_channels: int = 3
     input_size: int = INPUT_SIZE
     output_kind: str = "logit"
@@ -63,7 +28,7 @@ class ModelSpec:
     threshold: float = DEFAULT_THRESHOLD
     target_layers: List = field(default_factory=list)
     device: str = "cpu"
-    norm: str = "percentile"            # normalizacao de intensidade usada no treino
+    norm: str = "percentile"
 
     @property
     def phases_used(self) -> List[str]:
@@ -72,7 +37,7 @@ class ModelSpec:
         return [self.mode.split(":", 1)[1]]
 
 
-# --------------------------------------------------------------------------
+
 def find_target_layers(model) -> List:
     import torch.nn as nn
     layers = getattr(model, "gradcam_layers", None)
@@ -90,8 +55,6 @@ def find_target_layers(model) -> List:
 
 
 def _filter_kwargs(fn, cfg: dict) -> dict:
-    """Repassa ao builder so os argumentos que ele aceita (a menos que tenha **kwargs).
-    Evita TypeError por chaves extras do checkpoint (arch, threshold, norm, ...)."""
     try:
         sig = inspect.signature(fn)
     except (TypeError, ValueError):
@@ -108,12 +71,11 @@ def get_device(prefer_gpu=True) -> str:
 
 def load_model_spec(path: str, name: Optional[str] = None, device: Optional[str] = None
                     ) -> ModelSpec:
-    """Carrega um checkpoint no formato do contrato acima."""
     import torch
     device = device or get_device()
     try:
         ckpt = torch.load(path, map_location=device, weights_only=False)
-    except TypeError:                      # torch antigo sem weights_only
+    except TypeError:
         ckpt = torch.load(path, map_location=device)
 
     if isinstance(ckpt, dict) and "state_dict" in ckpt:
@@ -127,7 +89,7 @@ def load_model_spec(path: str, name: Optional[str] = None, device: Optional[str]
         model = builder(**_filter_kwargs(builder, cfg))
         model.load_state_dict(ckpt["state_dict"])
     else:
-        model, cfg = ckpt, {}              # modelo inteiro serializado
+        model, cfg = ckpt, {}
     model.to(device).eval()
     norm = str(cfg.get("norm", "percentile"))
     if "percentil" not in norm.lower():
@@ -148,21 +110,18 @@ def load_model_spec(path: str, name: Optional[str] = None, device: Optional[str]
     )
 
 
-# --------------------------------------------------------------------------
-# Pre-processamento: de cortes normalizados -> tensor (N, C, H, W)
-# --------------------------------------------------------------------------
+
+
+
 def build_input(spec: ModelSpec, vols: Dict[str, np.ndarray], zs: List[int]):
-    """vols: fase -> (X,Y,Z) normalizado [0,1]; zs: indices de corte.
-    Retorna tensor float32 (len(zs), C, S, S) no device do modelo.
-    DEVE ser identico ao pre-processamento do treino (Pessoa B)."""
     import torch
     import torch.nn.functional as F
     chans = []
     for ph in spec.phases_used:
-        chans.append(np.stack([vols[ph][:, :, z] for z in zs], axis=0))   # (N,X,Y)
-    x = np.stack(chans, axis=1).astype(np.float32)                        # (N,C,X,Y)
+        chans.append(np.stack([vols[ph][:, :, z] for z in zs], axis=0))
+    x = np.stack(chans, axis=1).astype(np.float32)
     if x.shape[1] == 1 and spec.in_channels == 3:
-        x = np.repeat(x, 3, axis=1)                                       # fase unica -> 3 canais
+        x = np.repeat(x, 3, axis=1)
     elif x.shape[1] != spec.in_channels:
         raise ValueError(f"Modelo espera {spec.in_channels} canais, entrada tem {x.shape[1]}")
     t = torch.from_numpy(x)
@@ -177,7 +136,6 @@ def build_input(spec: ModelSpec, vols: Dict[str, np.ndarray], zs: List[int]):
 
 
 def outputs_to_prob(out, output_kind: str):
-    """Saida bruta da rede -> probabilidade de pCR, shape (N,) numpy."""
     import torch
     out = out.detach().float().reshape(out.shape[0], -1)
     if output_kind == "prob":
@@ -190,7 +148,6 @@ def outputs_to_prob(out, output_kind: str):
 
 
 def make_predict_fn(spec: ModelSpec, vols: Dict[str, np.ndarray], batch_size: int = 16):
-    """Retorna f(zs)->np.ndarray de probabilidades (uma por corte)."""
     import torch
 
     def predict(zs: List[int]) -> np.ndarray:
@@ -203,9 +160,8 @@ def make_predict_fn(spec: ModelSpec, vols: Dict[str, np.ndarray], batch_size: in
     return predict
 
 
-# --------------------------------------------------------------------------
-# Modelo de demonstracao (so p/ testar a GUI antes de B e C entregarem)
-# --------------------------------------------------------------------------
+
+
 def make_demo_spec(mode="fusion", seed=0, device="cpu") -> ModelSpec:
     import torch
     import torch.nn as nn

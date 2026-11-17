@@ -1,16 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-PESSOA A - Aumento de dados (item b) e analise de balanceamento.
-
-Estas funcoes servem para a ABA de visualizacao e para o grafico de classes.
-A Pessoa B pode importar `augment_variants` no treino (ou usar a propria
-implementacao - a assinatura e simples de substituir).
-
-Biblioteca usada: scipy.ndimage.rotate (funcao elementar)
-  - reshape=False : mantem 256x256 (cantos ficam preenchidos)
-  - order=1       : interpolacao bilinear (suave, sem overshoot do cubico)
-  - mode='constant', cval=0 : fundo preto, coerente com o fundo da MRI
-"""
 import math
 from typing import Dict, List, Sequence, Tuple
 
@@ -51,9 +38,9 @@ def augment_mask_like(mask: np.ndarray, angle: float, mirrored: bool) -> np.ndar
                           mode="constant", cval=0.0)
 
 
-# --------------------------------------------------------------------------
-# Balanceamento
-# --------------------------------------------------------------------------
+
+
+
 def balance_plan(counts: Dict[int, int], n_variants: int = 10,
                  relevant_ratio: float = 1.5) -> Dict:
     """Analisa o desbalanceamento e calcula as estrategias.
@@ -77,7 +64,7 @@ def balance_plan(counts: Dict[int, int], n_variants: int = 10,
     ratio = n_maj / n_min
 
     v_maj = n_variants
-    v_min = int(math.ceil(n_variants * ratio))        # equaliza o total por classe
+    v_min = int(math.ceil(n_variants * ratio))
     var = {maj_cls: v_maj, 1 - maj_cls: v_min}
     total = n0 + n1
     return {

@@ -1,11 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-PESSOA A - Leitura de .nii e indexacao do dataset.
-
-Funcoes elementares de biblioteca usadas (permitido pelo enunciado):
-  nibabel.load / get_fdata / header.get_zooms / aff2axcodes  -> leitura de .nii
-  pandas.read_csv                                            -> leitura da planilha
-"""
 import os
 import re
 from dataclasses import dataclass, field
@@ -21,16 +13,16 @@ from pa_config import (PHASES, PHASE_PATTERNS, MASK_PATTERNS, CSV_ID_COLS,
                        EXTRA_CSV_NAMES, SPLITS_CSV_NAME, MASK_DIR_NAMES)
 
 
-# --------------------------------------------------------------------------
-# Leitura de volumes
-# --------------------------------------------------------------------------
+
+
+
 @dataclass
 class Volume:
-    data: np.ndarray                 # (X, Y, Z) float32, ordem de voxels do arquivo
+    data: np.ndarray
     spacing: tuple = (1.0, 1.0, 1.0)
-    axcodes: str = "?"               # orientacao anatomica (ja permutada p/ a ordem X,Y,Z)
+    axcodes: str = "?"
     path: str = ""
-    z_axis_original: int = 2         # em qual eixo do ARQUIVO estavam os cortes
+    z_axis_original: int = 2
     shape_original: tuple = ()
 
     @property
@@ -43,10 +35,6 @@ class Volume:
 
 
 def detect_z_axis(shape, forced=None) -> int:
-    """Eixo dos cortes de um volume 3D. `forced` (0/1/2) vence; senao o eixo cujo
-    tamanho difere dos outros dois (que sao iguais, ex.: 256x256 por plano).
-    Se nao der para decidir, usa o MENOR eixo - mesmo criterio da Pessoa C
-    (pc_data.plane_axis_last), para treino e interface lerem os volumes igual."""
     if forced is not None:
         return int(forced)
     for a in range(3):
@@ -57,9 +45,6 @@ def detect_z_axis(shape, forced=None) -> int:
 
 
 def load_nii(path: str, z_axis=None) -> Volume:
-    """Le um .nii/.nii.gz e devolve SEMPRE (X, Y, Z): o eixo dos cortes e movido
-    para o fim (ver detect_z_axis / pa_config.Z_AXIS). Volumes 4D (X,Y,Z,1) sao
-    achatados; 2D ganha um eixo z de tamanho 1. Nao reamostra nem inverte voxels."""
     import nibabel as nib
     img = nib.load(path)
     data = np.asarray(img.dataobj, dtype=np.float32)
@@ -75,7 +60,7 @@ def load_nii(path: str, z_axis=None) -> Volume:
         axcodes = "?"
     shape0 = tuple(data.shape)
     za = detect_z_axis(shape0, pa_config.Z_AXIS if z_axis is None else z_axis)
-    perm = [a for a in range(3) if a != za] + [za]            # (X, Y, Z)
+    perm = [a for a in range(3) if a != za] + [za]
     if perm != [0, 1, 2]:
         data = np.ascontiguousarray(np.transpose(data, perm))
         zooms = tuple(zooms[i] for i in perm) if len(zooms) == 3 else zooms
@@ -91,11 +76,10 @@ def load_mask(path: str) -> Volume:
     return vol
 
 
-# --------------------------------------------------------------------------
-# Normalizacao e orientacao
-# --------------------------------------------------------------------------
+
+
+
 def normalize_volume(data: np.ndarray, p_low=NORM_P_LOW, p_high=NORM_P_HIGH) -> np.ndarray:
-    """Recorte por percentis + escala para [0,1], por volume."""
     lo, hi = np.percentile(data, [p_low, p_high])
     if hi - lo < 1e-8:
         return np.zeros_like(data, dtype=np.float32)
@@ -103,8 +87,6 @@ def normalize_volume(data: np.ndarray, p_low=NORM_P_LOW, p_high=NORM_P_HIGH) -> 
 
 
 def orient_slice(sl: np.ndarray, orientation: str = "T_lower", flip_lr: bool = False):
-    """Prepara um corte 2D (X,Y) para exibicao. Retorna (imagem, origin).
-    Usado SO para exibir - as redes recebem o corte cru (X,Y)."""
     if orientation == "T_lower":
         out, origin = sl.T, "lower"
     elif orientation == "rot90":
@@ -117,24 +99,22 @@ def orient_slice(sl: np.ndarray, orientation: str = "T_lower", flip_lr: bool = F
 
 
 def orient_like(sl, orientation, flip_lr):
-    """Aplica a MESMA transformacao de exibicao a mapas (Grad-CAM, mascara)."""
     return orient_slice(sl, orientation, flip_lr)[0]
 
 
-# --------------------------------------------------------------------------
-# Indexacao do dataset
-# --------------------------------------------------------------------------
+
+
+
 @dataclass
 class Case:
     pid: str
     label: Optional[int] = None
     split: Optional[str] = None
-    phases: Dict[str, str] = field(default_factory=dict)   # fase -> caminho
+    phases: Dict[str, str] = field(default_factory=dict)
     mask: Optional[str] = None
     clinical: dict = field(default_factory=dict)
 
     def mask_range(self):
-        """(mask_start, mask_end) do CSV: cortes que contem tumor, se a planilha tiver."""
         try:
             return int(self.clinical["mask_start"]), int(self.clinical["mask_end"])
         except (KeyError, TypeError, ValueError):
@@ -167,9 +147,6 @@ def _norm_split(v, colname=None):
 
 
 def _classify_file(path: str, root: Optional[str] = None):
-    """Retorna ('mask', None) | ('phase', nome_da_fase) | (None, None).
-    E mascara se o NOME tiver um padrao de MASK_PATTERNS ou se estiver numa PASTA
-    chamada mask/seg/... (ex.: <raiz>/mask/ISPY1_1001_spy1_vis1.nii.gz)."""
     low = os.path.basename(path).lower()
     parts = []
     if root:
@@ -193,7 +170,6 @@ def scan_nii_files(root: str) -> List[str]:
 
 
 class DatasetIndex:
-    """Associa paciente -> arquivos das 3 fases + mascara (+ rotulo/split do CSV)."""
 
     def __init__(self, root: str, csv_path: Optional[str] = None,
                  splits_csv: Optional[str] = None):
@@ -205,7 +181,7 @@ class DatasetIndex:
         if sp:
             self._apply_splits(sp)
 
-    # ---- construcao ------------------------------------------------------
+
     def _build(self, csv_path):
         files = scan_nii_files(self.root)
         csv_path = csv_path or self._find_csv()
@@ -223,8 +199,8 @@ class DatasetIndex:
             else:
                 case.phases[phase] = f
 
-        # Colunas do CSV (pre/post_early/post_late) dizem exatamente qual arquivo e cada
-        # fase e tem prioridade sobre os padroes de nome.
+
+
         by_key = {}
         for f in files:
             by_key.setdefault(_file_key(f), []).append(f)
@@ -252,8 +228,6 @@ class DatasetIndex:
         return out
 
     def _find_csv(self):
-        """Planilha de METADADOS: a que tem coluna de id e de pCR e mais colunas
-        (ignora splits.csv e split_x_classe.csv)."""
         import pandas as pd
         best, best_score = None, (-1, -1)
         for p in self._list_csvs():
@@ -276,9 +250,6 @@ class DatasetIndex:
         return None
 
     def _apply_splits(self, path):
-        """Particao do grupo (pid, pCR, split). So PREENCHE quem ainda nao tem particao:
-        a coluna de particao do CSV oficial (se existir) tem prioridade - mesma regra da
-        Pessoa C (pc_data, --splits_csv)."""
         import pandas as pd
         df = pd.read_csv(path)
         idc = _pick_col(df.columns, CSV_ID_COLS)
@@ -305,7 +276,7 @@ class DatasetIndex:
         dsc = _pick_col(df.columns, [CSV_DATASET_COL]) if CSV_DATASET_COL else None
         if dsc is not None and CSV_DATASET_VALUE:
             keep = df[dsc].astype(str).str.strip().str.lower() == str(CSV_DATASET_VALUE).lower()
-            if keep.any():                        # so filtra se o valor existe (nao esvazia a tabela)
+            if keep.any():
                 df = df[keep]
         idc = _pick_col(df.columns, CSV_ID_COLS)
         lbc = _pick_col(df.columns, CSV_LABEL_COLS)
@@ -336,8 +307,6 @@ class DatasetIndex:
 
     @staticmethod
     def _match_pid(filepath, pids_csv):
-        """Escolhe o ID do paciente: maior ID do CSV contido no caminho; senao
-        usa o nome do arquivo sem sufixo de fase/mascara."""
         low = filepath.lower()
         best = None
         for pid in pids_csv:
@@ -352,7 +321,7 @@ class DatasetIndex:
                 name = re.sub(re.escape(p) + r".*$", "", name, flags=re.I)
         return name.strip("_-. ") or os.path.basename(os.path.dirname(filepath))
 
-    # ---- consultas -------------------------------------------------------
+
     def pids(self, split: Optional[str] = None, complete_only=True) -> List[str]:
         out = []
         for pid, c in sorted(self.cases.items()):
@@ -385,12 +354,10 @@ class DatasetIndex:
 
 
 def _file_key(path: str) -> str:
-    """Nome do arquivo sem .nii/.nii.gz, em minusculas (chave de busca)."""
     return re.sub(r"\.nii(\.gz)?$", "", os.path.basename(str(path)).strip(), flags=re.I).lower()
 
 
 def _resolve_ref(ref, root, by_key):
-    """Valor de uma celula do CSV (nome/caminho de arquivo) -> caminho real, ou None."""
     if ref is None or _isnan(ref):
         return None
     s = str(ref).strip()
@@ -402,7 +369,7 @@ def _resolve_ref(ref, root, by_key):
     key = _file_key(s)
     if key in by_key:
         return sorted(by_key[key])[0]
-    hits = [p for k, v in by_key.items() if key in k for p in v]     # busca por trecho do nome
+    hits = [p for k, v in by_key.items() if key in k for p in v]
     return hits[0] if len(hits) == 1 else None
 
 
@@ -413,16 +380,16 @@ def _isnan(v):
         return False
 
 
-# --------------------------------------------------------------------------
-# Carregamento de um caso completo
-# --------------------------------------------------------------------------
+
+
+
 @dataclass
 class LoadedCase:
     pid: str
     label: Optional[int]
-    vols: Dict[str, np.ndarray]        # fase -> (X,Y,Z) normalizado [0,1]
-    raw: Dict[str, np.ndarray]         # fase -> (X,Y,Z) intensidade original
-    mask: Optional[np.ndarray]         # (X,Y,Z) binaria ou None
+    vols: Dict[str, np.ndarray]
+    raw: Dict[str, np.ndarray]
+    mask: Optional[np.ndarray]
     info: Dict[str, Volume]
 
     @property

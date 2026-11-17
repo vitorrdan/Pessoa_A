@@ -1,12 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-PESSOA A - Janela principal (Tkinter + matplotlib).
-
-Executar:  python pa_gui_app.py
-Abas: Visualizar | Aumento de dados | Treino/Resultados | Estrategias de corte |
-      Classificar + Grad-CAM | Classificar pasta nova
-Barra superior: carregar pesos salvos (varios modelos podem ficar carregados).
-"""
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
@@ -62,7 +53,7 @@ class App:
                 self._register(pa_models.load_model_spec(p))
         except Exception as e:
             msg = str(e)
-            if import_errors:                       # causa mais comum: pc_models nao importou
+            if import_errors:
                 msg += "\n\nFalhas ao importar os modulos da equipe:\n" + "\n".join(import_errors)
             messagebox.showerror("Carregar pesos", msg)
 
@@ -77,7 +68,7 @@ class App:
             try:
                 __import__(mod)
             except ModuleNotFoundError as e:
-                if e.name != mod:                   # faltou uma dependencia DENTRO do modulo
+                if e.name != mod:
                     errors.append(f"{mod}: falta a biblioteca '{e.name}'")
             except Exception as e:
                 errors.append(f"{mod}: {type(e).__name__}: {e}")

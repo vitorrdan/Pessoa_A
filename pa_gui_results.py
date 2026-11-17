@@ -1,12 +1,3 @@
-# -*- coding: utf-8 -*-
-"""PESSOA A - Aba 'Treino/Resultados': exibe curvas de loss e tabela de metricas
-produzidas por B e C (arquivos .json). Nao treina nada.
-
-FORMATO DO JSON (1 arquivo por experimento):
- {"name": "ResNet50 - fusao", "train_loss": [...], "val_loss": [...],
-  "train_time_s": 842.0,
-  "metrics": {"sensibilidade":..,"especificidade":..,"precisao":..,"acuracia":..,"f1":..,"auc":..}}
-Campos opcionais: "val_auc": [...], "notes": "lr=1e-4, bs=16 ..."."""
 import json
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -14,8 +5,8 @@ from tkinter import filedialog, messagebox, ttk
 from pa_gui_common import make_canvas
 
 COLS = ["name", "sensibilidade", "especificidade", "precisao", "acuracia", "f1", "auc", "train_time_s"]
-# Nomes alternativos aceitos nos JSONs (ingles; prefixos m05_ = limiar 0,5 e mt_ = limiar ajustado,
-# usados pela Pessoa C). Ordem de busca: nome puro, m05_, mt_.
+
+
 ALIASES = {"sensibilidade": ["sensitivity", "sens", "recall"],
            "especificidade": ["specificity", "spec"],
            "precisao": ["precision"], "acuracia": ["accuracy", "acc"],
@@ -65,7 +56,7 @@ class ResultsTab(ttk.Frame):
     def redraw(self):
         self.tree.delete(*self.tree.get_children())
         for r in self.runs:
-            m = r.get("metrics") or r              # metricas aninhadas ou no topo do JSON
+            m = r.get("metrics") or r
             vals = [r.get("name", "?")] + [self._fmt(get_metric(m, c)) for c in COLS[1:7]] + \
                    [self._fmt(r.get("train_time_s", r.get("train_time")), 0)]
             self.tree.insert("", "end", values=vals)

@@ -1,11 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-PESSOA A - "Classificar pasta nova" (conjunto-teste surpresa, sem retreinar).
-
-Fluxo: indexa a pasta (mesma logica do dataset) -> carrega cada paciente ->
-aplica a estrategia de cortes -> probabilidade de pCR -> metricas (se houver
-rotulos no CSV da pasta). Nao treina nada: so usa os pesos salvos.
-"""
 import time
 from typing import Callable, Dict, Optional
 
@@ -38,7 +30,7 @@ def classify_folder(spec, folder: str, strategy: str = "mean", csv_path: Optiona
             res = predict_volume(make_predict_fn(spec, lc.vols), lc.n_slices, lc.mask, strat)
             rows.append({"pid": pid, "label": lc.label, "prob": res["prob"],
                          "pred": int(res["prob"] >= thr), "strategy_used": strat, "erro": ""})
-        except Exception as e:                       # um paciente ruim nao derruba o lote
+        except Exception as e:
             rows.append({"pid": pid, "label": idx.cases[pid].label, "prob": float("nan"),
                          "pred": -1, "strategy_used": strategy, "erro": str(e)[:120]})
     if progress:

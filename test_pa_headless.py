@@ -1,7 +1,3 @@
-# -*- coding: utf-8 -*-
-"""PESSOA A - Testes SEM torch e SEM Tkinter (io, aumento, balanceamento, metricas,
-estrategias de corte, coerencia calor-tumor, classificacao de pasta com predictor falso).
-Uso: python test_pa_headless.py"""
 import os
 import sys
 import tempfile
@@ -25,7 +21,7 @@ def main():
     tmp = tempfile.mkdtemp()
     make(tmp, n=18, size=64, nz=8)
 
-    # --- indexacao e leitura -------------------------------------------------
+
     idx = DatasetIndex(tmp)
     assert len(idx.cases) == 18 and len(idx.pids()) == 18, idx.summary()
     assert idx.csv_info["label"] == "pcr" and idx.csv_info["split"] == "split"
@@ -46,18 +42,18 @@ def main():
     assert orient_slice(np.zeros((3, 4)), "T_lower", flip_lr=True)[0].shape == (4, 3)
     ok("orient_slice")
 
-    # --- aumento ----------------------------------------------------------------
+
     sl = lc.vols["early"][:, :, 4]
     vs = augment_variants(sl)
     assert len(vs) == 10 and all(v[1].shape == sl.shape for v in vs)
-    assert np.allclose(vs[2][1], sl)                          # 0 graus original = identidade
-    assert np.allclose(vs[7][1], sl[:, ::-1])                 # 0 graus espelhada
-    assert not np.allclose(vs[0][1], sl)                      # -20 graus muda a imagem
+    assert np.allclose(vs[2][1], sl)
+    assert np.allclose(vs[7][1], sl[:, ::-1])
+    assert not np.allclose(vs[0][1], sl)
     m2 = augment_mask_like(lc.mask[:, :, 4], 10, True)
     assert set(np.unique(m2)) <= {0.0, 1.0}
     ok("augment_variants: 10 variacoes, identidade e espelho corretos")
 
-    # --- balanceamento ------------------------------------------------------------
+
     p = balance_plan({0: 120, 1: 40})
     assert abs(p["ratio"] - 3.0) < 1e-9 and p["relevant"]
     assert p["variants_per_class"] == {0: 10, 1: 30}
@@ -66,7 +62,7 @@ def main():
     assert not balance_plan({0: 50, 1: 45})["relevant"]
     ok("balance_plan")
 
-    # --- metricas -----------------------------------------------------------------
+
     rng = np.random.default_rng(1)
     y = rng.integers(0, 2, 200)
     pr = np.clip(y * 0.3 + rng.normal(0.35, 0.25, 200), 0, 1)
@@ -77,13 +73,13 @@ def main():
     assert abs(m["precisao"] - precision_score(y, yp)) < 1e-9
     assert abs(m["sensibilidade"] - recall_score(y, yp)) < 1e-9
     assert abs(m["f1"] - f1_score(y, yp)) < 1e-9 and abs(m["acuracia"] - accuracy_score(y, yp)) < 1e-9
-    assert abs(auc_roc([0, 1, 1, 0], [0.5, 0.5, 0.5, 0.5]) - 0.5) < 1e-9     # empates
+    assert abs(auc_roc([0, 1, 1, 0], [0.5, 0.5, 0.5, 0.5]) - 0.5) < 1e-9
     ok("metricas e AUC conferem com sklearn")
 
-    # --- estrategias de corte -----------------------------------------------------
+
     areas = tumor_area_per_slice(lc.mask, 8)
     assert areas.shape == (8,) and max_area_slice(lc.mask, 8) == int(np.argmax(areas))
-    fake = lambda zs: np.array([0.1 + 0.1 * z for z in zs])       # prob cresce com z
+    fake = lambda zs: np.array([0.1 + 0.1 * z for z in zs])
     calls = []
     spy = lambda zs: (calls.append(len(zs)), fake(zs))[1]
     r = predict_volume(spy, 8, lc.mask, "central")
@@ -105,7 +101,7 @@ def main():
             pass
     ok("estrategias: central, maior area, media, maximo, media ponderada (+erro sem mascara)")
 
-    # --- coerencia calor x tumor ----------------------------------------------------
+
     mask = np.zeros((64, 64)); mask[20:30, 20:30] = 1
     cam_in = np.zeros((64, 64)); cam_in[22:28, 22:28] = 1.0
     cam_out = np.zeros((64, 64)); cam_out[45:55, 45:55] = 1.0
@@ -113,7 +109,7 @@ def main():
     assert abs(a["heat_fraction"] - 1.0) < 1e-9 and a["peak_in_mask"] == 1.0 and a["top_in_mask"] == 1.0
     assert b["heat_fraction"] == 0.0 and b["peak_in_mask"] == 0.0
     assert abs(a["enrichment"] - 1.0 / (100 / 4096)) < 1e-6
-    half = cam_in.copy(); half[45:55, 45:55] = 36 / 100          # metade do calor em cada regiao
+    half = cam_in.copy(); half[45:55, 45:55] = 36 / 100
     assert abs(heat_in_mask_metrics(half, mask)["heat_fraction"] - 36 / 72) < 1e-9
     assert np.isnan(heat_in_mask_metrics(cam_in, np.zeros((64, 64)))["heat_fraction"])
     assert np.isnan(heat_in_mask_metrics(np.zeros((64, 64)), mask)["heat_fraction"])
@@ -123,12 +119,12 @@ def main():
     assert n01[0].max() == 1 and n01[0].min() == 0 and n01[1].max() == 0
     ok("heat_in_mask_metrics / _norm01")
 
-    # --- classificar pasta (predictor falso, sem torch) ----------------------------------
+
     import pa_models
     import pa_folder_eval
 
     def fake_make_predict_fn(spec, vols, batch_size=16):
-        # "rede" falsa: area realcada do corte -> prob. alta se tumor PEQUENO (pCR) no sintetico
+
         def f(zs):
             return np.array([1.0 - np.clip((vols["early"][:, :, z] > 0.5).mean() / 0.12, 0, 1)
                              for z in zs])
@@ -139,17 +135,17 @@ def main():
     assert len(out["rows"]) == 18 and all(r["erro"] == "" for r in out["rows"])
     mt = out["metrics"]
     assert mt["n"] == 18 and mt["tp"] + mt["tn"] + mt["fp"] + mt["fn"] == 18
-    assert mt["auc"] > 0.9, mt                                  # sinal sintetico deve ser capturado
+    assert mt["auc"] > 0.9, mt
     out_t = pa_folder_eval.classify_folder(Spec(), tmp, "mean", split="test")
     assert len(out_t["rows"]) == 3
-    # pasta sem mascara + estrategia que exige mascara -> fallback p/ 'mean'
+
     nm = tempfile.mkdtemp()
     for f in os.listdir(tmp):
         if "seg" not in f:
             os.link(os.path.join(tmp, f), os.path.join(nm, f))
     out_nm = pa_folder_eval.classify_folder(Spec(), nm, "max_area")
     assert {r["strategy_used"] for r in out_nm["rows"]} == {"mean"} and out_nm["metrics"]
-    # pasta sem CSV: so previsoes, sem metricas
+
     nc = tempfile.mkdtemp()
     for f in os.listdir(tmp):
         if f.endswith(".gz"):
@@ -164,26 +160,25 @@ def main():
 
 
 def test_real_like():
-    """Regressao dos problemas apontados pela Pessoa C: eixo z, nomes _aqc_, CSV spy1/test."""
     import nibabel as nib
     from pa_nii_io import detect_z_axis, load_nii
     import pa_config
 
-    # --- eixo z: o array do arquivo pode ter os cortes em qualquer eixo
+
     base = np.random.default_rng(0).random((32, 32, 5)).astype(np.float32)
     for za, arr in ((2, base), (1, np.transpose(base, (0, 2, 1))), (0, np.transpose(base, (2, 0, 1)))):
         f = os.path.join(tempfile.mkdtemp(), "v.nii.gz")
         nib.save(nib.Nifti1Image(arr, np.eye(4)), f)
         v = load_nii(f)
         assert v.shape == (32, 32, 5) and v.z_axis_original == za, (za, v.shape)
-        assert np.allclose(v.data, base)                     # mesmo conteudo, mesma ordem X,Y,Z
+        assert np.allclose(v.data, base)
     assert detect_z_axis((256, 49, 256)) == 1 and detect_z_axis((49, 256, 256)) == 0
     assert detect_z_axis((256, 256, 49)) == 2
-    assert detect_z_axis((10, 20, 30)) == 0 and detect_z_axis((30, 20, 10)) == 2     # ambiguo -> menor eixo (= Pessoa C)
+    assert detect_z_axis((10, 20, 30)) == 0 and detect_z_axis((30, 20, 10)) == 2
     assert detect_z_axis((10, 20, 30), forced=2) == 2
     ok("eixo z detectado (0, 1 ou 2) e movido para o fim; conteudo preservado")
 
-    # --- dataset 'real-like': z no meio, _aqc_, CSV com dataset/test/pre/post_*
+
     for with_cols in (True, False):
         tmp = tempfile.mkdtemp()
         make(tmp, n=20, size=64, nz=8, layout="official", phase_cols=with_cols)
@@ -191,11 +186,11 @@ def test_real_like():
         assert idx.csv_info["rows_total"] == 25 and idx.csv_info["rows_used"] == 20, idx.csv_info
         assert len(idx.cases) == 20 and not any(p.startswith("DUKE") for p in idx.cases)
         assert (idx.csv_info["phase_cols"] is not None) == with_cols
-        assert len(idx.pids()) == 20                                        # 3 fases de todos
-        # particao: 0=treino, 1=teste, 2=validacao (nao trocar 1 e 2)
+        assert len(idx.pids()) == 20
+
         assert (len(idx.pids("train")), len(idx.pids("test")), len(idx.pids("val"))) == (12, 4, 4)
         assert idx.cases["ISPY1_1017"].split == "test" and idx.cases["ISPY1_1013"].split == "val"
-        # splits.csv conflitante NAO sobrescreve a particao do CSV oficial (regra da Pessoa C)
+
         import pandas as pd
         os.makedirs(os.path.join(tmp, "cache"), exist_ok=True)
         pd.DataFrame({"pid": list(idx.cases), "pCR": 0, "split": "train"}).to_csv(
@@ -206,7 +201,7 @@ def test_real_like():
         lc = load_case(idx.cases["ISPY1_1000"])
         assert lc.vols["early"].shape == (64, 64, 8) and lc.mask.shape == (64, 64, 8)
         areas = lc.mask.sum(axis=(0, 1))
-        assert int(np.argmax(areas)) in (3, 4, 5), areas                   # pico no meio dos cortes
+        assert int(np.argmax(areas)) in (3, 4, 5), areas
         assert idx.cases["ISPY1_1000"].mask_range() is not None
         zs = np.where(areas > 0)[0]
         assert idx.cases["ISPY1_1000"].mask_range() == (int(zs.min()), int(zs.max()))
@@ -214,20 +209,18 @@ def test_real_like():
 
 
 def test_meta_layout():
-    """Estrutura vista nos arquivos da Pessoa B: dce/ e mask/, _spy1_vis1_dce_aqc_N, CSV de
-    metadados com dataset='duke', cache/splits.csv, cortes no PRIMEIRO eixo."""
     import nibabel as nib
     tmp = tempfile.mkdtemp()
     make(tmp, n=20, size=64, nz=8, layout="meta")
     raw = np.asarray(nib.load(os.path.join(tmp, "dce", "ISPY1_1000_spy1_vis1_dce_aqc_0.nii.gz")).dataobj)
-    assert raw.shape == (8, 64, 64)            # z no eixo 0: o fatiamento por shape[2] do data.py quebraria
-    assert raw.shape[2] // 2 != 4              # (indice 32 de um eixo de 64, nao o corte central)
+    assert raw.shape == (8, 64, 64)
+    assert raw.shape[2] // 2 != 4
 
     idx = DatasetIndex(tmp)
     assert idx.csv_info["path"].endswith("BreastDCEDL_spy1_metadata.csv"), idx.csv_info["path"]
-    assert idx.csv_info["rows_used"] == idx.csv_info["rows_total"] == 22     # dataset='duke': nao filtra
+    assert idx.csv_info["rows_used"] == idx.csv_info["rows_total"] == 22
     assert idx.csv_info["splits_csv"].endswith(os.path.join("cache", "splits.csv"))
-    assert len(idx.cases) == 20 and len(idx.pids()) == 20                   # as 2 linhas sem pCR nao viram caso
+    assert len(idx.cases) == 20 and len(idx.pids()) == 20
     assert all(c.mask and os.sep + "mask" + os.sep in c.mask for c in idx.cases.values())
     assert (len(idx.pids("train")), len(idx.pids("val")), len(idx.pids("test"))) == (12, 4, 4)
     assert idx.class_counts() == {0: 13, 1: 7}
@@ -235,7 +228,7 @@ def test_meta_layout():
         lc = load_case(idx.cases[pid])
         assert lc.vols["pre"].shape == (64, 64, 8) and lc.info["pre"].z_axis_original == 0
         areas = lc.mask.sum(axis=(0, 1))
-        # confere o eixo z com a coluna mask_max_plane do CSV (mesma ideia de verificacao p/ o dado real)
+
         assert int(np.argmax(areas)) == int(idx.cases[pid].clinical["mask_max_plane"]), areas
     from pa_models import _filter_kwargs
     ok_builder = lambda dropout=0.5, hidden=64: None

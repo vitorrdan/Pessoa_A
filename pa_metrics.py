@@ -1,9 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-PESSOA A - Metricas de classificacao binaria (sensibilidade, especificidade,
-precisao, acuracia, F1 + AUC). Pura em numpy: nao depende de torch/sklearn.
-Classe positiva = pCR presente (1).
-"""
 from typing import Dict, Sequence
 
 import numpy as np
@@ -34,7 +28,6 @@ def binary_metrics(y_true: Sequence[int], y_prob: Sequence[float],
 
 
 def auc_roc(y_true, y_prob) -> float:
-    """AUC por Mann-Whitney (com tratamento de empates). NaN se so ha uma classe."""
     y_true = np.asarray(y_true).astype(int)
     y_prob = np.asarray(y_prob).astype(float)
     pos, neg = y_prob[y_true == 1], y_prob[y_true == 0]
@@ -44,7 +37,7 @@ def auc_roc(y_true, y_prob) -> float:
     allv = np.concatenate([pos, neg])[order]
     ranks = np.empty(len(allv), dtype=float)
     i = 0
-    while i < len(allv):                       # ranks medios p/ empates
+    while i < len(allv):
         j = i
         while j + 1 < len(allv) and allv[j + 1] == allv[i]:
             j += 1
